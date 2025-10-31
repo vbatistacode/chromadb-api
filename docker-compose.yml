@@ -1,5 +1,6 @@
 services:
   chromadb-api:
+    container_name: chromadb-api
     build:
       context: .
       dockerfile: Dockerfile
@@ -14,7 +15,24 @@ services:
       - API_KEY=${API_KEY}
     networks:
       - dokploy-network
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    volumes:
+      - chroma:/data
+    ports:
+      - "8000:8000"
+    networks:
+      - dokploy-network
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/data
+      - OPENAI_API_KEY=${OPEN_API_KEY}
 
 networks:
   dokploy-network:
     external: true
+    
+volumes:
+  chroma:
+    name: chroma
