@@ -1,7 +1,8 @@
 {
   "name": "chromadb-api",
   "scripts": {
-    "dev": "bun run --hot src/index.ts"
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run src/index.ts"
   },
   "dependencies": {
     "@chroma-core/openai": "^0.1.7",
