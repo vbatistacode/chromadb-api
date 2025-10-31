@@ -23,8 +23,6 @@ services:
     container_name: chromadb
     volumes:
       - chroma:/data
-    ports:
-      - "8000:8000"
     networks:
       - dokploy-network
     environment:
