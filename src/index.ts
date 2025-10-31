@@ -75,10 +75,28 @@ app.get("/", (c) => {
 });
 
 const port = parseInt(process.env.PORT || "3000");
+const hostname = process.env.HOSTNAME || "0.0.0.0";
 
-serve({
-  fetch: app.fetch,
-  port,
+try {
+  serve({
+    fetch: app.fetch,
+    port,
+    hostname,
+  });
+
+  console.log(`Server is running on http://${hostname}:${port}`);
+} catch (error) {
+  console.error("Failed to start server:", error);
+  process.exit(1);
+}
+
+// Handle uncaught errors
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught Exception:", error);
+  process.exit(1);
 });
 
-console.log(`Server is running on port ${port}`);
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+  process.exit(1);
+});
