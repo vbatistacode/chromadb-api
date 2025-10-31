@@ -1,0 +1,19 @@
+[providers]
+node = "nixpkgs"
+
+[phases.setup]
+nixPkgs = ["nodejs-20_x"]
+
+[phases.install]
+cmds = [
+  "curl -fsSL https://bun.sh/install | bash",
+  "export PATH=\"$HOME/.bun/bin:$PATH\"",
+  "bun install --production"
+]
+
+[phases.build]
+cmds = []
+
+[start]
+cmd = "$HOME/.bun/bin/bun src/index.ts"
+
