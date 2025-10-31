@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { randomUUID } from "crypto";
-import { getCollectionOrError } from "../lib/collections";
+import { getCollectionOrError } from "../lib/collections.js";
 
 const documents = new Hono();
 

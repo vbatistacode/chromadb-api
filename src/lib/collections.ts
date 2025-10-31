@@ -1,4 +1,4 @@
-import { getChromaClient, createEmbeddingFunction } from "./chroma";
+import { getChromaClient, createEmbeddingFunction } from "./chroma.js";
 import { Collection } from "chromadb";
 
 export async function getCollectionOrError(name: string): Promise<Collection> {

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getCollectionOrError } from "../lib/collections";
+import { getCollectionOrError } from "../lib/collections.js";
 
 const query = new Hono();
 

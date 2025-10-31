@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { getChromaClient, createEmbeddingFunction } from "../lib/chroma";
-import { getCollectionOrError } from "../lib/collections";
+import { getChromaClient, createEmbeddingFunction } from "../lib/chroma.js";
+import { getCollectionOrError } from "../lib/collections.js";
 
 const collections = new Hono();
 
