@@ -1,11 +1,21 @@
 To install dependencies:
 ```sh
-bun install
+npm install
 ```
 
-To run:
+To run in development mode:
 ```sh
-bun run dev
+npm run dev
 ```
 
-open http://localhost:3000
+To build:
+```sh
+npm run build
+```
+
+To run in production:
+```sh
+npm start
+```
+
+Open http://localhost:3000

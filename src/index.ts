@@ -1,3 +1,6 @@
+// Load environment variables from .env file
+import "dotenv/config";
+
 // Set SSL certificate verification before any imports
 // This is needed when connecting to ChromaDB instances with self-signed certificates
 if (process.env.DISABLE_SSL_VERIFICATION === "true") {
@@ -7,6 +10,7 @@ if (process.env.DISABLE_SSL_VERIFICATION === "true") {
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { serve } from "@hono/node-server";
 import { authMiddleware } from "./middleware/auth";
 import collections from "./routes/collections";
 import documents from "./routes/documents";
@@ -72,7 +76,9 @@ app.get("/", (c) => {
 
 const port = parseInt(process.env.PORT || "3000");
 
-export default {
-  port,
+serve({
   fetch: app.fetch,
-};
+  port,
+});
+
+console.log(`Server is running on port ${port}`);
