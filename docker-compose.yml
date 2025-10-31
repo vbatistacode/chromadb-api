@@ -1,0 +1,21 @@
+services:
+  chromadb-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - CHROMA_HOST=http://chromadb:8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - API_KEY=${API_KEY}
+    depends_on:
+      - chromadb
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true
