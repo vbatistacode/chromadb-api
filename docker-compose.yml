@@ -15,7 +15,10 @@ services:
       - API_KEY=${API_KEY}
     networks:
       - dokploy-network
-  chroma:
+    depends_on:
+      - chromadb
+    restart: unless-stopped
+  chromadb:
     image: chromadb/chroma:latest
     container_name: chromadb
     volumes:
