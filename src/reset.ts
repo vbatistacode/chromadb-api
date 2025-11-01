@@ -9,27 +9,33 @@ if (process.env.DISABLE_SSL_VERIFICATION === "true") {
 
 import { getChromaClient } from "./lib/chroma.js";
 
-async function resetDatabase() {
+async function deleteCollection(collectionName: string) {
   try {
-    // ChromaDB requires ALLOW_RESET environment variable to be set to TRUE
-    // to enable the reset functionality
-    process.env.ALLOW_RESET = "TRUE";
+    if (!collectionName) {
+      console.error("✗ Error: Collection name is required");
+      console.log("\nUsage: npm run reset <collection-name>");
+      console.log("Example: npm run reset my-collection");
+      process.exit(1);
+    }
 
     const client = getChromaClient();
 
-    console.log("Resetting ChromaDB database...");
-    await client.reset();
+    console.log(`Deleting collection '${collectionName}'...`);
+    await client.deleteCollection({
+      name: collectionName,
+    } as any);
 
-    console.log("✓ ChromaDB database has been reset successfully.");
+    console.log(`✓ Collection '${collectionName}' deleted successfully.`);
   } catch (error: any) {
-    console.error("✗ Error resetting ChromaDB:", error.message);
-    if (error.message?.includes("ALLOW_RESET")) {
-      console.error(
-        "Note: ChromaDB requires ALLOW_RESET=TRUE environment variable to enable reset."
-      );
+    if (error.message?.includes("not found")) {
+      console.error(`✗ Collection '${collectionName}' not found.`);
+    } else {
+      console.error("✗ Error deleting collection:", error.message);
     }
     process.exit(1);
   }
 }
 
-resetDatabase();
+// Get collection name from command line arguments
+const collectionName = process.argv[2];
+deleteCollection(collectionName);

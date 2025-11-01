@@ -31,7 +31,6 @@ services:
       - IS_PERSISTENT=TRUE
       - PERSIST_DIRECTORY=/data
       - OPENAI_API_KEY=${OPEN_API_KEY}
-      - ALLOW_RESET=TRUE
 
 networks:
   dokploy-network:
