@@ -4,6 +4,53 @@ import { getCollectionOrError } from "../lib/collections.js";
 
 const documents = new Hono();
 
+// Validate and sanitize metadata to ensure all values are valid ChromaDB types
+// ChromaDB metadata values must be: string, number, boolean, null, or undefined
+function sanitizeMetadata(metadata: any): Record<string, any> | undefined {
+  if (metadata === null || metadata === undefined) {
+    return undefined;
+  }
+
+  if (typeof metadata !== "object" || Array.isArray(metadata)) {
+    return undefined;
+  }
+
+  const sanitized: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(metadata)) {
+    // Skip null values
+    if (value === null) {
+      sanitized[key] = null;
+      continue;
+    }
+
+    // ChromaDB accepts: string, number, boolean, null
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      sanitized[key] = value;
+      continue;
+    }
+
+    // Convert arrays and objects to JSON strings
+    if (Array.isArray(value) || typeof value === "object") {
+      try {
+        sanitized[key] = JSON.stringify(value);
+      } catch (e) {
+        // Skip invalid values that can't be stringified
+        continue;
+      }
+      continue;
+    }
+
+    // Skip other types (functions, symbols, etc.)
+  }
+
+  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+}
+
 // List documents from collection
 documents.get("/:name/documents", async (c) => {
   try {
@@ -136,7 +183,7 @@ documents.post("/:name/documents", async (c) => {
     // Process each record individually
     const finalIds: string[] = [];
     const finalDocuments: string[] = [];
-    const finalMetadatas: (object | undefined)[] = [];
+    const finalMetadatas: (Record<string, any> | undefined)[] = [];
     const results: Array<{ id: string; status: string }> = [];
 
     // Get all provided IDs that are not null/undefined to check what exists
@@ -165,8 +212,11 @@ documents.post("/:name/documents", async (c) => {
     for (let i = 0; i < documents.length; i++) {
       const doc = documents[i];
       const inputId = inputIds && i < inputIds.length ? inputIds[i] : undefined;
-      const metadata =
+      const rawMetadata =
         metadatas && i < metadatas.length ? metadatas[i] : undefined;
+
+      // Sanitize input metadata
+      const metadata = sanitizeMetadata(rawMetadata);
 
       let finalId: string;
       let status: string;
@@ -188,8 +238,13 @@ documents.post("/:name/documents", async (c) => {
           if (metadata !== undefined && existing.metadatas) {
             const idxInExisting = existing.ids.indexOf(finalId);
             if (idxInExisting >= 0 && existing.metadatas[idxInExisting]) {
+              // Sanitize existing metadata before merging
+              const existingMeta = sanitizeMetadata(
+                existing.metadatas[idxInExisting]
+              );
+              // Merge: existing first, then new metadata overwrites
               finalMetadatas.push({
-                ...existing.metadatas[idxInExisting],
+                ...existingMeta,
                 ...metadata,
               });
             } else {
@@ -198,7 +253,11 @@ documents.post("/:name/documents", async (c) => {
           } else if (metadata === undefined && existing.metadatas) {
             const idxInExisting = existing.ids.indexOf(finalId);
             if (idxInExisting >= 0 && existing.metadatas[idxInExisting]) {
-              finalMetadatas.push(existing.metadatas[idxInExisting]);
+              // Sanitize existing metadata
+              const existingMeta = sanitizeMetadata(
+                existing.metadatas[idxInExisting]
+              );
+              finalMetadatas.push(existingMeta);
             } else {
               finalMetadatas.push(undefined);
             }
