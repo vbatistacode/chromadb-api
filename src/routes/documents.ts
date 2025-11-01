@@ -135,54 +135,74 @@ documents.get("/:name/documents/:id", async (c) => {
   }
 });
 
-// Update document
-documents.patch("/:name/documents/:id", async (c) => {
+// Upsert (insert or update) document
+documents.post("/:name/documents/:id", async (c) => {
   try {
     const { name, id } = c.req.param();
     const body = await c.req.json();
     const { document, metadata } = body;
 
+    if (typeof document !== "string" && document !== undefined) {
+      return c.json(
+        { error: "Field 'document' must be a string if provided" },
+        400
+      );
+    }
+
     const collection = await getCollectionOrError(name);
 
-    // Get the existing document to preserve unchanged fields
-    const existing = await collection.get({
-      ids: [id],
-    });
+    // Try to get the existing document, for merge/update semantics
+    let updatedDoc = document;
+    let updatedMetadata = metadata;
+    let exists = false;
 
-    if (!existing.ids || existing.ids.length === 0) {
-      return c.json({ error: "Document not found" }, 404);
+    try {
+      const existing = await collection.get({ ids: [id] });
+      if (existing.ids && existing.ids.length > 0) {
+        exists = true;
+        if (updatedDoc === undefined) {
+          updatedDoc = existing.documents?.[0];
+        }
+        if (metadata !== undefined && existing.metadatas?.[0]) {
+          // Merge with existing metadata
+          updatedMetadata = {
+            ...existing.metadatas[0],
+            ...metadata,
+          };
+        } else if (metadata === undefined && existing.metadatas?.[0]) {
+          updatedMetadata = existing.metadatas[0];
+        }
+      }
+    } catch (e) {
+      // If the error means document is not found, treat as insert
+      exists = false;
     }
 
-    // Merge existing data with new data - preserve unchanged fields
-    const updatedDoc =
-      document !== undefined ? document : existing.documents?.[0];
-
-    // Merge metadata if provided, otherwise keep existing
-    let updatedMetadata = existing.metadatas?.[0];
-    if (metadata !== undefined) {
-      // If metadata is provided, merge with existing metadata
-      updatedMetadata = {
-        ...existing.metadatas?.[0],
-        ...metadata,
-      };
+    // Require document to exist (either existing or passed in)
+    if (!updatedDoc) {
+      return c.json(
+        { error: "Field 'document' is required for new upserts" },
+        400
+      );
     }
 
-    // Prepare update data - embeddings will be handled automatically
-    const updateData: any = {
+    // Prepare data for upsert
+    const upsertData: any = {
       ids: [id],
       documents: [updatedDoc],
     };
-
     if (updatedMetadata !== undefined) {
-      updateData.metadatas = [updatedMetadata];
+      upsertData.metadatas = [updatedMetadata];
     }
 
-    // Use ChromaDB's update method
-    await collection.update(updateData);
+    // Perform upsert
+    await collection.upsert(upsertData);
 
     return c.json({
-      message: "Document updated successfully",
-      id: id,
+      message: exists
+        ? "Document updated successfully"
+        : "Document inserted successfully",
+      id,
     });
   } catch (error: any) {
     if (error.message?.includes("not found")) {
@@ -190,7 +210,7 @@ documents.patch("/:name/documents/:id", async (c) => {
     }
     return c.json(
       {
-        error: "Failed to update document",
+        error: "Failed to upsert document",
         details: error.message,
       },
       500
