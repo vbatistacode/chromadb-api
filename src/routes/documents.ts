@@ -4,59 +4,6 @@ import { getCollectionOrError } from "../lib/collections.js";
 
 const documents = new Hono();
 
-// Add documents to collection
-documents.post("/:name/documents1", async (c) => {
-  try {
-    const { name } = c.req.param();
-    const body = await c.req.json();
-    const { documents: docs, ids, metadatas } = body;
-
-    if (!docs || !Array.isArray(docs) || docs.length === 0) {
-      return c.json({ error: "Documents array is required" }, 400);
-    }
-
-    const collection = await getCollectionOrError(name);
-
-    // Prepare data for ChromaDB - embeddings will be handled automatically
-    const documentData: any = {
-      documents: docs,
-    };
-
-    if (ids) {
-      documentData.ids = ids;
-    } else {
-      // Generate UUIDs if not provided
-      documentData.ids = docs.map(() => randomUUID());
-    }
-
-    if (metadatas) {
-      documentData.metadatas = metadatas;
-    }
-    console.log(documentData);
-    await collection.add(documentData);
-
-    return c.json(
-      {
-        message: "Documents added successfully",
-        count: docs.length,
-        ids: documentData.ids,
-      },
-      201
-    );
-  } catch (error: any) {
-    if (error.message?.includes("not found")) {
-      return c.json({ error: error.message }, 404);
-    }
-    return c.json(
-      {
-        error: "Failed to add documents",
-        details: error.message,
-      },
-      500
-    );
-  }
-});
-
 // List documents from collection
 documents.get("/:name/documents", async (c) => {
   try {
@@ -136,42 +83,29 @@ documents.get("/:name/documents/:id", async (c) => {
 });
 
 // Upsert (insert or update) document
+
 documents.post("/:name/documents", async (c) => {
   try {
     const { name } = c.req.param();
     const body = await c.req.json();
 
-    // Validate input format
+    // Validate that 'documents' is present and is array of strings
     if (
       !body ||
-      !Array.isArray(body.ids) ||
       !Array.isArray(body.documents) ||
-      (body.metadatas !== undefined && !Array.isArray(body.metadatas))
+      (body.metadatas !== undefined && !Array.isArray(body.metadatas)) ||
+      (body.ids !== undefined && !Array.isArray(body.ids))
     ) {
       return c.json(
         {
           error:
-            "Invalid body format. Expected { ids: string[], documents: string[], metadatas?: object[] }",
+            "Invalid body format. Expected { documents: string[], ids?: (string | null)[], metadatas?: object[] }",
         },
         400
       );
     }
 
-    const { ids, documents, metadatas } = body;
-
-    // Make sure the arrays have matching lengths
-    if (
-      ids.length !== documents.length ||
-      (metadatas && ids.length !== metadatas.length)
-    ) {
-      return c.json(
-        {
-          error:
-            "`ids`, `documents`, and `metadatas` arrays must have the same length",
-        },
-        400
-      );
-    }
+    const { documents, ids: inputIds = undefined, metadatas } = body;
 
     // Documents must all be strings
     for (const doc of documents) {
@@ -183,76 +117,117 @@ documents.post("/:name/documents", async (c) => {
       }
     }
 
+    // Validate array lengths - ids can be shorter or same length, but not longer
+    if (
+      (inputIds && inputIds.length > documents.length) ||
+      (metadatas && metadatas.length !== documents.length)
+    ) {
+      return c.json(
+        {
+          error:
+            "`ids` (if provided) must not be longer than `documents`, and `metadatas` (if provided) must have the same length as `documents`",
+        },
+        400
+      );
+    }
+
     const collection = await getCollectionOrError(name);
 
-    // Merge/update semantics for upsert: for existing docs, merge metadata and fill missing docs if needed
-    let finalDocuments = [...documents];
-    let finalMetadatas =
-      metadatas !== undefined
-        ? [...metadatas]
-        : Array(ids.length).fill(undefined);
+    // Process each record individually
+    const finalIds: string[] = [];
+    const finalDocuments: string[] = [];
+    const finalMetadatas: (object | undefined)[] = [];
+    const results: Array<{ id: string; status: string }> = [];
 
-    // Try to get existing docs to support update/merge
-    // (Batch GET)
-    let existing;
-    try {
-      existing = await collection.get({ ids });
-    } catch (e) {
-      existing = {};
-    }
-
-    for (let i = 0; i < ids.length; i++) {
-      const idxInExisting =
-        existing && existing.ids
-          ? existing.ids.findIndex((eid: string) => eid === ids[i])
-          : -1;
-
-      if (idxInExisting !== -1) {
-        // Update: Use doc if provided, otherwise fallback to existing
-        if (
-          finalDocuments[i] === undefined &&
-          existing.documents &&
-          existing.documents[idxInExisting] !== undefined
-        ) {
-          finalDocuments[i] = existing.documents[idxInExisting];
-        }
-        // Metadata merge
-        if (
-          metadatas !== undefined &&
-          existing.metadatas &&
-          existing.metadatas[idxInExisting]
-        ) {
-          finalMetadatas[i] = {
-            ...existing.metadatas[idxInExisting],
-            ...metadatas[i],
-          };
-        } else if (
-          metadatas === undefined &&
-          existing.metadatas &&
-          existing.metadatas[idxInExisting]
-        ) {
-          finalMetadatas[i] = existing.metadatas[idxInExisting];
+    // Get all provided IDs that are not null/undefined to check what exists
+    const providedIds: string[] = [];
+    if (inputIds) {
+      for (const id of inputIds) {
+        if (id !== null && id !== undefined && typeof id === "string") {
+          providedIds.push(id);
         }
       }
     }
 
-    // Require a doc for each upsert
-    for (let i = 0; i < finalDocuments.length; i++) {
-      if (!finalDocuments[i]) {
-        return c.json(
-          {
-            error: `Field 'document' is required for new upserts (missing at index ${i})`,
-          },
-          400
-        );
+    // Check which IDs already exist
+    let existing: any = { ids: [] };
+    if (providedIds.length > 0) {
+      try {
+        existing = await collection.get({ ids: providedIds });
+      } catch (e) {
+        existing = { ids: [] };
       }
     }
 
-    // Prepare upsert data array
+    const existingIdsSet = new Set(existing.ids || []);
+
+    // Process each document individually
+    for (let i = 0; i < documents.length; i++) {
+      const doc = documents[i];
+      const inputId = inputIds && i < inputIds.length ? inputIds[i] : undefined;
+      const metadata =
+        metadatas && i < metadatas.length ? metadatas[i] : undefined;
+
+      let finalId: string;
+      let status: string;
+
+      // Determine ID for this record
+      if (
+        inputId !== null &&
+        inputId !== undefined &&
+        typeof inputId === "string"
+      ) {
+        // ID was provided
+        finalId = inputId;
+
+        // Check if this ID exists
+        if (existingIdsSet.has(finalId)) {
+          status = "updated";
+
+          // For updates, merge metadata if applicable
+          if (metadata !== undefined && existing.metadatas) {
+            const idxInExisting = existing.ids.indexOf(finalId);
+            if (idxInExisting >= 0 && existing.metadatas[idxInExisting]) {
+              finalMetadatas.push({
+                ...existing.metadatas[idxInExisting],
+                ...metadata,
+              });
+            } else {
+              finalMetadatas.push(metadata);
+            }
+          } else if (metadata === undefined && existing.metadatas) {
+            const idxInExisting = existing.ids.indexOf(finalId);
+            if (idxInExisting >= 0 && existing.metadatas[idxInExisting]) {
+              finalMetadatas.push(existing.metadatas[idxInExisting]);
+            } else {
+              finalMetadatas.push(undefined);
+            }
+          } else {
+            finalMetadatas.push(metadata);
+          }
+        } else {
+          // ID provided but doesn't exist - create new with this ID
+          status = "inserted";
+          finalMetadatas.push(metadata);
+        }
+      } else {
+        // No ID provided - generate UUID and create new
+        finalId = randomUUID();
+        status = "inserted";
+        finalMetadatas.push(metadata);
+      }
+
+      finalIds.push(finalId);
+      finalDocuments.push(doc);
+      results.push({ id: finalId, status });
+    }
+
+    // Prepare upsert data
     const upsertData: any = {
-      ids: ids,
+      ids: finalIds,
       documents: finalDocuments,
     };
+
     // Only include metadatas if at least one element is not undefined
     if (finalMetadatas.some((m) => m !== undefined)) {
       upsertData.metadatas = finalMetadatas;
@@ -261,24 +236,9 @@ documents.post("/:name/documents", async (c) => {
     // Perform upsert
     await collection.upsert(upsertData);
 
-    // Figure out which documents were inserted or updated
-    let result = [];
-    if (existing && existing.ids) {
-      for (let i = 0; i < ids.length; i++) {
-        const wasUpdate = existing.ids.includes(ids[i]);
-        result.push({
-          id: ids[i],
-          status: wasUpdate ? "updated" : "inserted",
-        });
-      }
-    } else {
-      // If no existing info, all were inserted
-      result = ids.map((id: string) => ({ id, status: "inserted" }));
-    }
-
     return c.json({
       message: "Batch upsert completed",
-      results: result,
+      results: results,
     });
   } catch (error: any) {
     if (error.message?.includes("not found")) {
