@@ -4,7 +4,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "reset": "tsx src/reset.ts"
   },
   "dependencies": {
     "@chroma-core/openai": "^0.1.7",
