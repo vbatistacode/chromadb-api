@@ -186,11 +186,16 @@ documents.post("/:name/documents", async (c) => {
     const finalMetadatas: (Record<string, any> | undefined)[] = [];
     const results: Array<{ id: string; status: string }> = [];
 
-    // Get all provided IDs that are not null/undefined to check what exists
+    // Get all provided IDs that are not null/undefined/empty to check what exists
     const providedIds: string[] = [];
     if (inputIds) {
       for (const id of inputIds) {
-        if (id !== null && id !== undefined && typeof id === "string") {
+        if (
+          id !== null &&
+          id !== undefined &&
+          typeof id === "string" &&
+          id !== ""
+        ) {
           providedIds.push(id);
         }
       }
@@ -225,9 +230,10 @@ documents.post("/:name/documents", async (c) => {
       if (
         inputId !== null &&
         inputId !== undefined &&
-        typeof inputId === "string"
+        typeof inputId === "string" &&
+        inputId !== ""
       ) {
-        // ID was provided
+        // ID was provided (non-empty string)
         finalId = inputId;
 
         // Check if this ID exists
